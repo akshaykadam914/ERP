@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Resource Planning</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb; --primary-hover: #1d4ed8; --sidebar-bg: #111827; --sidebar-hover: #1f2937;
+            --bg: #f3f4f6; --card-bg: #ffffff; --text: #111827; --text-light: #6b7280; --border: #e5e7eb;
+            --radius: 12px; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; --info: #3b82f6;
+            --purple: #8b5cf6; --teal: #14b8a6; --orange: #f97316;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+        
+        /* Login */
+        #loginScreen { position: fixed; inset: 0; background: var(--sidebar-bg); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+        .login-card { background: var(--card-bg); padding: 40px; border-radius: var(--radius); width: 380px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .login-card h2 { text-align: center; margin-bottom: 24px; color: var(--primary); }
+        .login-card .logo-icon { text-align: center; font-size: 48px; margin-bottom: 16px; color: var(--primary); }
+
+        /* Layout */
+        #appShell { display: none; width: 100%; height: 100%; }
+        .sidebar { width: 260px; background: var(--sidebar-bg); color: white; height: 100vh; overflow-y: auto; transition: transform 0.3s; position: fixed; z-index: 100; }
+        .main-content { margin-left: 260px; flex: 1; display: flex; flex-direction: column; height: 100vh; }
+        .topbar { height: 64px; background: var(--card-bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 24px; justify-content: space-between; flex-shrink: 0; }
+        .content-area { flex: 1; overflow-y: auto; padding: 24px; background: var(--bg); }
+        
+        /* Sidebar */
+        .sidebar-header { padding: 20px; font-size: 20px; font-weight: 700; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 10px; }
+        .nav-section { padding: 16px 0 8px 20px; font-size: 11px; text-transform: uppercase; color: rgba(255,255,255,0.4); letter-spacing: 1.1px; }
+        .nav-item { display: flex; align-items: center; padding: 10px 20px; color: rgba(255,255,255,0.7); cursor: pointer; transition: all 0.2s; font-size: 14px; gap: 12px; }
+        .nav-item:hover, .nav-item.active { background: var(--sidebar-hover); color: white; }
+        .nav-item.active { border-right: 3px solid var(--primary); background: rgba(37,99,235,0.2); }
+        .nav-item i { width: 20px; text-align: center; }
+        .submenu { display: none; background: rgba(0,0,0,0.1); }
+        .submenu.open { display: block; }
+        .has-submenu > i.fa-chevron-down { margin-left: auto; font-size: 10px; transition: transform 0.2s; }
+        .has-submenu.open > i.fa-chevron-down { transform: rotate(180deg); }
+
+        /* Topbar */
+        .topbar-left { display: flex; align-items: center; gap: 16px; }
+        .topbar-right { display: flex; align-items: center; gap: 20px; }
+        .hamburger { display: none; font-size: 20px; cursor: pointer; }
+        .global-search { padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px; width: 250px; font-size: 14px; }
+        .clock { font-size: 14px; color: var(--text-light); font-weight: 500; }
+        .topbar-icon { position: relative; cursor: pointer; color: var(--text-light); }
+        .badge-dot { position: absolute; top: -4px; right: -4px; width: 8px; height: 8px; background: var(--danger); border-radius: 50%; }
+        .user-info { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+        .avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+        .btn-logout { background: none; border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+
+        /* Components */
+        .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,0.05); padding: 24px; margin-bottom: 24px; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .page-title { font-size: 24px; font-weight: 700; }
+        
+        .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { border-radius: var(--radius); padding: 20px; color: white; cursor: pointer; transition: transform 0.2s; display: flex; justify-content: space-between; align-items: center; }
+        .stat-card:hover { transform: translateY(-3px); }
+        .stat-card h3 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+        .stat-card p { font-size: 13px; opacity: 0.9; }
+        .stat-card i { font-size: 40px; opacity: 0.3; }
+        .grad-blue { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+        .grad-orange { background: linear-gradient(135deg, #f97316, #ea580c); }
+        .grad-green { background: linear-gradient(135deg, #10b981, #059669); }
+        .grad-purple { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+        .grad-cyan { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+        .grad-red { background: linear-gradient(135deg, #ef4444, #dc2626); }
+        .grad-teal { background: linear-gradient(135deg, #14b8a6, #0d9488); }
+        .grad-indigo { background: linear-gradient(135deg, #4f46e5, #4338ca); }
+
+        .summary-strip { display: flex; gap: 24px; margin-bottom: 16px; flex-wrap: wrap; }
+        .summary-item { font-size: 14px; color: var(--text-light); }
+        .summary-item strong { color: var(--text); font-weight: 600; margin-right: 4px; }
+
+        /* Tables */
+        .table-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 16px; flex-wrap: wrap; }
+        .filter-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .filter-group input, .filter-group select { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+        .btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; transition: background 0.2s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-secondary { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        thead th { text-align: left; padding: 12px; border-bottom: 2px solid var(--border); color: var(--text-light); font-weight: 600; white-space: nowrap; }
+        tbody td { padding: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+        tbody tr:hover { background: #f9fafb; }
+        .table-responsive { overflow-x: auto; }
+
+        /* Badges */
+        .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: capitalize; display: inline-block; }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-danger { background: #fee2e2; color: #991b1b; }
+        .badge-warning { background: #fef3c7; color: #92400e; }
+        .badge-info { background: #dbeafe; color: #1e40af; }
+        .badge-purple { background: #ede9fe; color: #5b21b6; }
+        .badge-teal { background: #ccfbf1; color: #115e59; }
+        .badge-orange { background: #ffedd5; color: #9a3412; }
+        .badge-secondary { background: #e5e7eb; color: #374151; }
+
+        /* Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; display: none; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: white; border-radius: var(--radius); width: 100%; max-width: 600px; max-height: 90vh; overflow-y: auto; padding: 24px; position: relative; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-title { font-size: 18px; font-weight: 700; }
+        .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-light); }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 500; color: var(--text); }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+        .form-group textarea { min-height: 80px; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+
+        /* Toast */
+        #toastContainer { position: fixed; bottom: 24px; right: 24px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+        .toast { padding: 12px 20px; border-radius: 6px; color: white; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); opacity: 0; transition: opacity 0.3s; }
+        .toast.show { opacity: 1; }
+        .toast-success { background: var(--success); }
+        .toast-error { background: var(--danger); }
+
+        /* Charts */
+        .chart-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-top: 24px; }
+
+        /* Kanban */
+        .kanban-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 24px; }
+        .kanban-col { background: var(--bg); border-radius: var(--radius); padding: 16px; min-height: 200px; }
+        .kanban-col-title { font-weight: 700; margin-bottom: 12px; font-size: 15px; }
+        .kanban-card { background: white; padding: 12px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); margin-bottom: 8px; border-left: 4px solid var(--primary); }
+        .kanban-card h4 { font-size: 14px; margin-bottom: 6px; }
+        .kanban-card p { font-size: 12px; color: var(--text-light); }
+        .progress-bar { height: 6px; background: var(--border); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 3px; }
+        .progress-info { display: flex; justify-content: space-between; font-size: 11px; margin-top: 4px; color: var(--text-light); }
+
+        /* Pipeline Stepper */
+        .pipeline-stepper { display: flex; margin-bottom: 24px; background: white; padding: 16px; border-radius: var(--radius); overflow-x: auto; }
+        .step { flex: 1; text-align: center; position: relative; padding: 0 8px; }
+        .step:not(:last-child)::after { content: ''; position: absolute; top: 15px; right: -50%; width: 100%; height: 2px; background: var(--border); z-index: 0; }
+        .step-circle { width: 32px; height: 32px; border-radius: 50%; background: var(--border); color: white; display: inline-flex; align-items: center; justify-content: center; font-weight: 600; font-size: 12px; position: relative; z-index: 1; }
+        .step-title { font-size: 12px; margin-top: 8px; font-weight: 500; color: var(--text-light); }
+        .step-count { font-size: 10px; color: var(--text-light); }
+
+        /* Print */
+        @media print { .sidebar, .topbar, .no-print { display: none !important; } .main-content { margin-left: 0 !important; } }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .hamburger { display: block; }
+            .global-search { width: 150px; }
+            .chart-grid { grid-template-columns: 1fr; }
+            .kanban-board { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loginScreen">
+        <div class="login-card">
+            <div class="logo-icon"><i class="fas fa-cubes"></i></div>
+            <h2>ERP System</h2>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="loginUser" value="admin">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="loginPass" value="admin123">
+            </div>
+            <button class="btn btn-primary" style="width: 100%; padding: 12px;" onclick="doLogin()">Sign In</button>
+        </div>
+    </div>
+
+    <div id="appShell">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header"><i class="fas fa-cubes"></i> ERP System</div>
+            
+            <div class="nav-section">Main</div>
+            <div class="nav-item" data-route="dashboard"><i class="fas fa-th-large"></i> Dashboard</div>
+            
+            <div class="nav-section">Administration</div>
+            <div class="nav-item" data-route="users"><i class="fas fa-users-cog"></i> Users</div>
+            
+            <div class="nav-section">HRM</div>
+            <div class="nav-item has-submenu" data-submenu="hrm-sub"><i class="fas fa-user-tie"></i> HRM <i class="fas fa-chevron-down"></i></div>
+            <div class="submenu" id="hrm-sub">
+                <div class="nav-item" data-route="employees"><i class="fas fa-id-badge"></i> Employees</div>
+                <div class="nav-item" data-route="payroll"><i class="fas fa-wallet"></i> Payroll</div>
+            </div>
+
+            <div class="nav-section">Inventory</div>
+            <div class="nav-item has-submenu" data-submenu="inv-sub"><i class="fas fa-boxes-stacked"></i> Inventory <i class="fas fa-chevron-down"></i></div>
+            <div class="submenu" id="inv-sub">
+                <div class="nav-item" data-route="products"><i class="fas fa-barcode"></i> Products</div>
+                <div class="nav-item" data-route="stock"><i class="fas fa-exchange-alt"></i> Stock Adj.</div>
+            </div>
+
+            <div class="nav-section">Sales</div>
+            <div class="nav-item has-submenu" data-submenu="sales-sub"><i class="fas fa-shopping-cart"></i> Sales <i class="fas fa-chevron-down"></i></div>
+            <div class="submenu" id="sales-sub">
+                <div class="nav-item" data-route="customers"><i class="fas fa-user-group"></i> Customers</div>
+                <div class="nav-item" data-route="orders"><i class="fas fa-file-invoice"></i> Sales Orders</div>
+            </div>
+
+            <div class="nav-section">Accounting</div>
+            <div class="nav-item has-submenu" data-submenu="acc-sub"><i class="fas fa-coins"></i> Accounting <i class="fas fa-chevron-down"></i></div>
+            <div class="submenu" id="acc-sub">
+                <div class="nav-item" data-route="invoices"><i class="fas fa-file-invoice-dollar"></i> Invoices</div>
+                <div class="nav-item" data-route="expenses"><i class="fas fa-receipt"></i> Expenses</div>
+            </div>
+
+            <div class="nav-section">CRM</div>
+            <div class="nav-item" data-route="leads"><i class="fas fa-funnel-dollar"></i> Leads & CRM</div>
+
+            <div class="nav-section">Projects</div>
+            <div class="nav-item" data-route="projects"><i class="fas fa-project-diagram"></i> Projects</div>
+
+            <div class="nav-section">Reports</div>
+            <div class="nav-item" data-route="reports"><i class="fas fa-chart-pie"></i> Financial Report</div>
+        </div>
+
+        <div class="main-content">
+            <div class="topbar">
+                <div class="topbar-left">
+                    <div class="hamburger" id="hamburger"><i class="fas fa-bars"></i></div>
+                    <input type="text" class="global-search" id="globalSearch" placeholder="Search...">
+                </div>
+                <div class="topbar-right">
+                    <div class="clock" id="clock"></div>
+                    <div class="topbar-icon"><i class="fas fa-bell"></i><div class="badge-dot"></div></div>
+                    <div class="user-info"><div class="avatar">A</div> Admin</div>
+                    <button class="btn-logout no-print" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                </div>
+            </div>
+            <div class="content-area" id="pageContent"></div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle"></h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <div id="toastContainer"></div>
+
+    <script>
+        // --- Config & Init ---
+        const SUPABASE_URL = 'https://vwjywtoybrhvsrwrawmi.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_qNXKF9qHPOyyccoqUIT37w_K5n5RpUe';
+        let db;
+        try {
+            if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_URL.startsWith('http')) {
+                db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            } else {
+                db = null;
+            }
+        } catch(e) { db = null; }
+
+        // --- Utilities ---
+        const money = (n) => '$' + (Number(n) || 0).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        const escapeHtml = (str) => {
+            if (!str) return '';
+            const d = document.createElement('div'); d.textContent = str; return d.innerHTML;
+        };
+        const todayISO = () => new Date().toISOString().split('T')[0];
+        const periodNow = () => todayISO().substring(0, 7);
+        const lastNMonths = (n) => {
+            const m = []; let d = new Date();
+            for (let i = 0; i < n; i++) { m.push(d.toISOString().substring(0, 7)); d.setMonth(d.getMonth() - 1); }
+            return m.reverse();
+        };
+        const monthLabel = (ym) => { if(!ym) return ''; const p = ym.split('-'); const d = new Date(p[0], p[1]-1); return d.toLocaleString('en', {month:'short', year:'2-digit'}); };
+        const monthLabelLong = (ym) => { if(!ym) return ''; const p = ym.split('-'); const d = new Date(p[0], p[1]-1); return d.toLocaleString('en', {month:'long', year:'numeric'}); };
+        
+        const statusBadgeClass = (s) => {
+            if (!s) return 'badge-secondary';
+            s = s.toLowerCase();
+            if (['active', 'paid', 'completed', 'closed won', 'approved'].includes(s)) return 'badge-success';
+            if (['inactive', 'cancelled', 'overdue', 'rejected'].includes(s)) return 'badge-danger';
+            if (['pending', 'on leave', 'pending approval', 'qualified', 'proposal', 'on hold'].includes(s)) return 'badge-warning';
+            if (['stock in', 'contacted', 'in progress', 'partial'].includes(s)) return 'badge-info';
+            if (['damage', 'negotiation'].includes(s)) return 'badge-purple';
+            if (['return', 'new'].includes(s)) return 'badge-teal';
+            if (['stock out'].includes(s)) return 'badge-orange';
+            return 'badge-secondary';
+        };
+
+        const avatarInitials = (name) => {
+            if(!name) return '?';
+            return name.split(' ').map(w => w[0]).join('').substring(0,2).toUpperCase();
+        };
+        const avatarColors = ['#2563eb','#10b981','#ff6000','#8b5cf6','#ef4444','#14b8a6'];
+        const avatarStyle = (name) => `background:${avatarColors[name.length % avatarColors.length]}`;
+
+        function toast(msg, isError=false) {
+            const c = document.getElementById('toastContainer');
+            const t = document.createElement('div');
+            t.className = `toast ${isError ? 'toast-error' : 'toast-success'}`;
+            t.textContent = msg;
+            c.appendChild(t);
+            setTimeout(() => t.classList.add('show'), 10);
+            setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3000);
+        }
+
+        async function nextCode(table, col, prefix, pad=4) {
+            if (!db) return prefix + '1'.padStart(pad, '0');
+            const { data, error } = await db.from(table).select(col).order(col, {ascending:false}).limit(1);
+            if (error) return prefix + '1'.padStart(pad, '0');
+            if (data && data.length > 0) {
+                const lastNum = parseInt(data[0][col].replace(prefix, ''));
+                return prefix + String(lastNum + 1).padStart(pad, '0');
+            }
+            return prefix + '1'.padStart(pad, '0');
+        }
+
+        async function fetchOptions(table, valueCol, labelCol) {
+            if (!db) return [];
+            const { data } = await db.from(table).select(`${valueCol}, ${labelCol}`).order(labelCol);
+            return (data||[]).map(i => ({value: i[valueCol], label: i[labelCol]}));
+        }
+
+        function wireFilters(scopeEl) {
+            const inputs = scopeEl.querySelectorAll('.filter-input');
+            const rows = scopeEl.querySelectorAll('tbody tr');
+            const apply = () => {
+                const vals = {};
+                inputs.forEach(i => { if(i.value) vals[i.dataset.col] = i.value.toLowerCase(); });
+                rows.forEach(r => {
+                    let show = true;
+                    for(let c in vals) { if (!r.dataset[c] || !r.dataset[c].toLowerCase().includes(vals[c])) show = false; }
+                    r.style.display = show ? '' : 'none';
+                });
+            };
+            inputs.forEach(i => i.oninput = apply);
+            
+            const globalSearch = document.getElementById('globalSearch');
+            if (globalSearch) {
+                globalSearch.oninput = () => {
+                    const q = globalSearch.value.toLowerCase();
+                    rows.forEach(r => { r.style.display = !q || r.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+                };
+            }
+        }
+
+        function exportTableToCSV(scopeEl, filename) {
+            const table = scopeEl.querySelector('table');
+            if(!table) return;
+            const rows = Array.from(table.querySelectorAll('tr')).filter(r => r.style.display !== 'none' && !r.querySelector('th[action]'));
+            const csv = rows.map(r => {
+                return Array.from(r.querySelectorAll('td, th')).filter(c => !c.classList.contains('no-export')).map(c => `"${c.textContent.replace(/"/g, '""')}"`).join(',');
+            }).join('\n');
+            const blob = new Blob([csv], {type:'text/csv'});
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+        }
+
+        const chartInstances = {};
+        function drawChart(canvasId, type, labels, datasets, extraOptions={}) {
+            if (chartInstances[canvasId]) chartInstances[canvasId].destroy();
+            const ctx = document.getElementById(canvasId);
+            if(!ctx) return;
+            chartInstances[canvasId] = new Chart(ctx, { type, data: { labels, datasets }, options: extraOptions });
+        }
+
+        // --- UI Components ---
+        function openModal(title, fields, onSave, data={}) {
+            document.getElementById('modalTitle').textContent = title;
+            const body = document.getElementById('modalBody');
+            let html = '';
+            fields.forEach(f => {
+                if (f.computed) return;
+                const val = data[f.name] || '';
+                html += `<div class="form-group"><label>${f.label}</label>`;
+                if (f.type === 'select') {
+                    html += `<select name="${f.name}" ${f.required?'required':''}>`;
+                    html += `<option value="">Select...</option>`;
+                    (f.options||[]).forEach(o => html += `<option value="${o.value}" ${val===o.value?'selected':''}>${escapeHtml(o.label)}</option>`);
+                    html += `</select>`;
+                } else if (f.type === 'textarea') {
+                    html += `<textarea name="${f.name}" ${f.required?'required':''}>${escapeHtml(val)}</textarea>`;
+                } else {
+                    html += `<input type="${f.type||'text'}" name="${f.name}" value="${f.type==='date'?(val?val.substring(0,10):''):escapeHtml(val)}" ${f.required?'required':''} ${f.readonly?'readonly':''}>`;
+                }
+                html += `</div>`;
+            });
+            html += `<div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="modalSaveBtn">Save</button></div>`;
+            body.innerHTML = html;
+            
+            document.getElementById('modalSaveBtn').onclick = async () => {
+                const payload = {};
+                let valid = true;
+                fields.forEach(f => {
+                    if (f.computed) return;
+                    const el = body.querySelector(`[name="${f.name}"]`);
+                    let v = el.value;
+                    if (f.required && !v) { valid = false; el.style.borderColor = 'red'; }
+                    if (f.type === 'number') v = parseFloat(v) || 0;
+                    payload[f.name] = v;
+                });
+                if (!valid) return toast('Please fill required fields', true);
+                document.getElementById('modalSaveBtn').disabled = true;
+                await onSave(payload);
+            };
+            document.getElementById('modalOverlay').classList.add('open');
+        }
+
+        function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+
+        async function confirmDelete(table, id, callback, blockMessage="This record is linked to other data and cannot be deleted.") {
+            if (!confirm('Are you sure you want to delete this?')) return;
+            if (!db) return toast('DB not connected', true);
+            const { error } = await db.from(table).delete().eq('id', id);
+            if (error) {
+                if (error.code === '23503') toast(blockMessage, true);
+                else toast(error.message, true);
+            } else {
+                toast('Deleted successfully');
+                if (callback) callback();
+            }
+        }
+
+        // --- Auth & Routing ---
+        function doLogin() {
+            const u = document.getElementById('loginUser').value;
+            const p = document.getElementById('loginPass').value;
+            if (u === 'admin' && p === 'admin123') {
+                sessionStorage.setItem('erp_auth', '1');
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('appShell').style.display = 'flex';
+                initApp();
+            } else toast('Invalid credentials', true);
+        }
+        function doLogout() {
+            sessionStorage.removeItem('erp_auth');
+            document.getElementById('appShell').style.display = 'none';
+            document.getElementById('loginScreen').style.display = 'flex';
+        }
+        
+        function checkAuth() {
+            if (sessionStorage.getItem('erp_auth')) {
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('appShell').style.display = 'flex';
+                initApp();
+            }
+        }
+
+        const routes = {
+            dashboard: renderDashboard, users: renderUsers, employees: renderEmployees, payroll: renderPayroll,
+            products: renderProducts, stock: renderStock, customers: renderCustomers, orders: renderOrders,
+            invoices: renderInvoices, expenses: renderExpenses, leads: renderLeads, projects: renderProjects, reports: renderReports
+        };
+
+        function initApp() {
+            updateClock(); setInterval(updateClock, 1000);
+            window.addEventListener('hashchange', handleRoute);
+            handleRoute();
+            document.getElementById('hamburger').onclick = () => document.getElementById('sidebar').classList.toggle('open');
+            document.querySelectorAll('.has-submenu').forEach(el => {
+                el.onclick = (e) => { e.stopPropagation(); el.classList.toggle('open'); document.getElementById(el.dataset.submenu).classList.toggle('open'); };
+            });
+            document.querySelectorAll('.nav-item[data-route]').forEach(el => {
+                el.onclick = () => { window.location.hash = el.dataset.route; document.getElementById('sidebar').classList.remove('open'); };
+            });
+        }
+
+        function handleRoute() {
+            const hash = window.location.hash.slice(1) || 'dashboard';
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            const activeNav = document.querySelector(`.nav-item[data-route="${hash}"]`);
+            if (activeNav) {
+                activeNav.classList.add('active');
+                const sub = activeNav.closest('.submenu');
+                if (sub) { sub.classList.add('open'); sub.previousElementSibling.classList.add('open'); }
+            }
+            if (routes[hash]) routes[hash]();
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent = now.toLocaleString('en-US', {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+        }
+
+        const content = () => document.getElementById('pageContent');
+        const dbErr = () => { if(!db) { content().innerHTML = '<div class="card" style="color:red;">Supabase not configured. Add URL/Key in script.</div>'; return true; } return false; };
+
+        // --- Pages ---
+        async function renderDashboard() {
+            if(dbErr()) return; const c = content(); c.innerHTML = '<h2>Loading Dashboard...</h2>';
+            const [inv, emp, prod, lead, proj, cust, exp, ord] = await Promise.all([
+                db.from('invoices').select('total, paid, status'),
+                db.from('employees').select('status', {count:'exact'}),
+                db.from('products').select('stock'),
+                db.from('leads').select('stage, deal_value'),
+                db.from('projects').select('status'),
+                db.from('customers').select('id', {count:'exact'}),
+                db.from('expenses').select('amount, date'),
+                db.from('sales_orders').select('status')
+            ]);
+            
+            const rev = (inv.data||[]).filter(i=>i.status==='Paid').reduce((s,i)=>s+Number(i.total),0);
+            const pendInv = (inv.data||[]).filter(i=>i.status==='Pending').length;
+            const actEmp = (emp.data||[]).filter(e=>e.status==='Active').length;
+            const lowStock = (prod.data||[]).filter(p=>p.stock<10).length;
+            const actLeads = (lead.data||[]).filter(l=>!['Closed Won','Closed Lost'].includes(l.stage)).length;
+            const actProj = (proj.data||[]).filter(p=>p.status==='In Progress').length;
+            const compProj = (proj.data||[]).filter(p=>p.status==='Completed').length;
+            const totExp = (exp.data||[]).reduce((s,e)=>s+Number(e.amount),0);
+
+            c.innerHTML = `
+                <div class="page-header"><h2 class="page-title">Dashboard</h2><div></div></div>
+                <div class="stat-cards">
+                    <div class="stat-card grad-blue" onclick="location.hash='invoices'"><div><h3>${money(rev)}</h3><p>Revenue (Paid)</p></div><i class="fas fa-dollar-sign"></i></div>
+                    <div class="stat-card grad-orange" onclick="location.hash='invoices'"><div><h3>${pendInv}</h3><p>Pending Invoices</p></div><i class="fas fa-file-invoice-dollar"></i></div>
+                    <div class="stat-card grad-green" onclick="location.hash='employees'"><div><h3>${actEmp}</h3><p>Active Employees</p></div><i class="fas fa-user-tie"></i></div>
+                    <div class="stat-card grad-purple" onclick="location.hash='products'"><div><h3>${(prod.data||[]).length} <small style="font-size:14px">(${lowStock} Low)</small></h3><p>Products</p></div><i class="fas fa-boxes-stacked"></i></div>
+                    <div class="stat-card grad-cyan" onclick="location.hash='leads'"><div><h3>${actLeads}</h3><p>Active Leads</p></div><i class="fas fa-funnel-dollar"></i></div>
+                    <div class="stat-card grad-red" onclick="location.hash='projects'"><div><h3>${actProj} / ${compProj}</h3><p>Active / Done Projects</p></div><i class="fas fa-project-diagram"></i></div>
+                    <div class="stat-card grad-teal" onclick="location.hash='customers'"><div><h3>${cust.count}</h3><p>Customers</p></div><i class="fas fa-user-group"></i></div>
+                    <div class="stat-card grad-indigo" onclick="location.hash='expenses'"><div><h3>${money(totExp)}</h3><p>Total Expenses</p></div><i class="fas fa-receipt"></i></div>
+                </div>
+                <div class="chart-grid">
+                    <div class="card"><h3 style="margin-bottom:16px">Revenue vs Expenses</h3><canvas id="dashBarChart"></canvas></div>
+                    <div class="card"><h3 style="margin-bottom:16px">Order Status</h3><canvas id="dashDoughChart"></canvas></div>
+                </div>`;
+
+            const months = lastNMonths(6);
+            const revData = months.map(m => (inv.data||[]).filter(i=>i.status==='Paid'&&i.date&&i.date.startsWith(m)).reduce((s,i)=>s+Number(i.total),0));
+            const expData = months.map(m => (exp.data||[]).filter(e=>e.date&&e.date.startsWith(m)).reduce((s,e)=>s+Number(e.amount),0));
+            drawChart('dashBarChart', 'bar', months.map(monthLabel), [
+                {label:'Revenue', data:revData, backgroundColor:'#2563eb'}, {label:'Expenses', data:expData, backgroundColor:'#ef4444'}
+            ]);
+
+            const statusCounts = {};
+            (ord.data||[]).forEach(o => statusCounts[o.status] = (statusCounts[o.status]||0)+1);
+            drawChart('dashDoughChart', 'doughnut', Object.keys(statusCounts), [{data:Object.values(statusCounts), backgroundColor:['#10b981','#f59e0b','#ef4444','#3b82f6']}], {plugins:{legend:{position:'bottom'}}});
+        }
+
+        async function renderUsers() {
+            if(dbErr()) return; const c = content();
+            const { data } = await db.from('app_users').select('*, employees(emp_id, name)').order('name');
+            const empOpts = await fetchOptions('employees', 'id', 'name');
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Users</h2><button class="btn btn-primary" id="addUserBtn"><i class="fas fa-plus"></i> Add User</button></div>
+            <div class="card table-responsive"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Employee</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(data||[]).map(r=>`<tr data-name="${escapeHtml(r.name)}" data-role="${r.role||''}"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.email)}</td><td><span class="badge ${statusBadgeClass(r.role)}">${r.role||'N/A'}</span></td><td>${r.employees?escapeHtml(r.employees.emp_id||r.employees.name):'-'}</td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status||'N/A'}</span></td><td class="no-export"><button class="btn btn-sm btn-secondary edit-btn" data-id="${r.id}">Edit</button> <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const fields = [{name:'name',label:'Name',required:true},{name:'email',label:'Email',type:'email',required:true},{name:'role',label:'Role',type:'select',options:[{value:'admin',label:'Admin'},{value:'manager',label:'Manager'},{value:'employee',label:'Employee'}]},{name:'department',label:'Department'},{name:'status',label:'Status',type:'select',options:[{value:'Active',label:'Active'},{value:'Inactive',label:'Inactive'}]},{name:'employee_id',label:'Linked Employee',type:'select',options:empOpts}];
+            document.getElementById('addUserBtn').onclick = () => openModal('Add User', fields, async (p) => { const {error}=await db.from('app_users').insert(p); if(error) toast(error.message,true); else {toast('Added');renderUsers();} closeModal(); });
+            c.querySelectorAll('.edit-btn').forEach(b => b.onclick = async () => { const r=(data||[]).find(x=>x.id===b.dataset.id); openModal('Edit User', fields, async(p)=>{const{error}=await db.from('app_users').update(p).eq('id',b.dataset.id);if(error)toast(error.message,true);else{toast('Updated');renderUsers();}closeModal();}, r); });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('app_users', b.dataset.id, renderUsers));
+            wireFilters(c);
+        }
+
+        async function renderEmployees() {
+            if(dbErr()) return; const c = content();
+            const { data } = await db.from('employees').select('*').order('name');
+            const depts = [...new Set((data||[]).map(d=>d.department).filter(Boolean))];
+            const active = (data||[]).filter(e=>e.status==='Active').length;
+            const onLeave = (data||[]).filter(e=>e.status==='On Leave').length;
+            
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Employees</h2><div><button class="btn btn-secondary" onclick="exportTableToCSV(document.getElementById('pageContent'),'employees.csv')"><i class="fas fa-file-csv"></i> CSV</button> <button class="btn btn-primary" id="addEmpBtn"><i class="fas fa-plus"></i> Add Employee</button></div></div>
+            <div class="summary-strip"><div class="summary-item"><strong>Total:</strong>${(data||[]).length}</div><div class="summary-item"><strong>Active:</strong>${active}</div><div class="summary-item"><strong>On Leave:</strong>${onLeave}</div><div class="summary-item"><strong>Departments:</strong>${depts.length}</div></div>
+            <div class="card table-responsive"><table><thead><tr><th>Name</th><th>Emp ID</th><th>Email</th><th>Dept</th><th>Designation</th><th>Salary</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(data||[]).map(r=>`<tr data-name="${escapeHtml(r.name)}" data-dept="${r.department||''}" data-status="${r.status||''}"><td><div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="${avatarStyle(r.name)}">${avatarInitials(r.name)}</div>${escapeHtml(r.name)}</div></td><td>${r.emp_id||''}</td><td>${escapeHtml(r.email||'')}</td><td>${escapeHtml(r.department||'')}</td><td>${escapeHtml(r.designation||'')}</td><td>${money(r.salary)}</td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status||'Active'}</span></td><td class="no-export"><button class="btn btn-sm btn-secondary edit-btn" data-id="${r.id}">Edit</button> <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const fields = [{name:'name',label:'Name',required:true},{name:'emp_id',label:'Employee ID'},{name:'email',label:'Email'},{name:'department',label:'Department'},{name:'designation',label:'Designation'},{name:'join_date',label:'Join Date',type:'date'},{name:'salary',label:'Salary',type:'number'},{name:'status',label:'Status',type:'select',options:[{value:'Active',label:'Active'},{value:'On Leave',label:'On Leave'},{value:'Inactive',label:'Inactive'}]}];
+            document.getElementById('addEmpBtn').onclick = () => openModal('Add Employee', fields, async (p) => { if(p.salary) p.salary=parseFloat(p.salary); const {error}=await db.from('employees').insert(p); if(error) toast(error.message,true); else {toast('Added');renderEmployees();} closeModal(); });
+            c.querySelectorAll('.edit-btn').forEach(b => b.onclick = async () => { const r=(data||[]).find(x=>x.id===b.dataset.id); openModal('Edit Employee', fields, async(p)=>{if(p.salary)p.salary=parseFloat(p.salary);const{error}=await db.from('employees').update(p).eq('id',b.dataset.id);if(error)toast(error.message,true);else{toast('Updated');renderEmployees();}closeModal();}, r); });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('employees', b.dataset.id, renderEmployees, "Cannot delete employee: linked to users, payroll, or expenses."));
+            wireFilters(c);
+        }
+
+        async function renderPayroll() {
+            if(dbErr()) return; const c = content();
+            const period = periodNow();
+            const { data: pr } = await db.from('payroll').select('*, employees(name, emp_id)').eq('period', period).order('created_at');
+            const { data: emps } = await db.from('employees').select('*').eq('status', 'Active');
+            
+            const gross = (pr||[]).reduce((s,p)=>s+Number(p.basic_salary||0)+Number(p.allowances||0),0);
+            const ded = (pr||[]).reduce((s,p)=>s+Number(p.deductions||0),0);
+            const net = (pr||[]).reduce((s,p)=>s+Number(p.net_salary||0),0);
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Payroll - ${monthLabelLong(period)}</h2><div><button class="btn btn-secondary" onclick="exportTableToCSV(document.getElementById('pageContent'),'payroll.csv')"><i class="fas fa-file-csv"></i> CSV</button> <button class="btn btn-primary" id="runPayrollBtn"><i class="fas fa-play"></i> Run Payroll</button></div></div>
+            <div class="summary-strip"><div class="summary-item"><strong>Gross:</strong>${money(gross)}</div><div class="summary-item"><strong>Deductions:</strong>${money(ded)}</div><div class="summary-item"><strong>Net:</strong>${money(net)}</div><div class="summary-item"><strong>Processed:</strong>${(pr||[]).length} / ${(emps||[]).length}</div></div>
+            <div class="card table-responsive"><table><thead><tr><th>Employee</th><th>Basic</th><th>Allowances</th><th>Deductions</th><th>Net Salary</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(pr||[]).map(r=>`<tr><td>${escapeHtml(r.employees?.name)}</td><td>${money(r.basic_salary)}</td><td>${money(r.allowances)}</td><td>${money(r.deductions)}</td><td>${money(r.net_salary)}</td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td><td class="no-export"><button class="btn btn-sm btn-info view-btn" data-id="${r.id}">Payslip</button> ${r.status==='Pending'?`<button class="btn btn-sm btn-success pay-btn" data-id="${r.id}">Mark Paid</button>`:''}</td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            document.getElementById('runPayrollBtn').onclick = async () => {
+                const existingEmpIds = (pr||[]).map(p=>p.employee_id);
+                const toProcess = (emps||[]).filter(e => !existingEmpIds.includes(e.id));
+                if(toProcess.length === 0) return toast('All active employees already processed for this period.');
+                const inserts = toProcess.map(e => {
+                    const basic = Number(e.salary||0);
+                    return { employee_id: e.id, period, basic_salary: basic, allowances: basic*0.10, deductions: basic*0.12, pay_date: todayISO(), status: 'Pending' };
+                });
+                const {error} = await db.from('payroll').insert(inserts);
+                if(error) toast(error.message, true); else { toast(`Payroll generated for ${toProcess.length} employees`); renderPayroll(); }
+            };
+            c.querySelectorAll('.pay-btn').forEach(b => b.onclick = async () => { const {error}=await db.from('payroll').update({status:'Paid'}).eq('id',b.dataset.id); if(error)toast(error.message,true);else{toast('Marked Paid');renderPayroll();} });
+            c.querySelectorAll('.view-btn').forEach(b => b.onclick = async () => { const r=(pr||[]).find(x=>x.id===b.dataset.id); openModal('Payslip', [{name:'period',label:'Period',computed:true},{name:'basic_salary',label:'Basic',computed:true},{name:'allowances',label:'Allowances',computed:true},{name:'deductions',label:'Deductions',computed:true},{name:'net_salary',label:'Net',computed:true}], ()=>closeModal(), r); });
+        }
+
+        async function renderProducts() {
+            if(dbErr()) return; const c = content();
+            const { data } = await db.from('products').select('*').order('name');
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Products</h2><button class="btn btn-primary" id="addProdBtn"><i class="fas fa-plus"></i> Add Product</button></div>
+            <div class="card table-responsive"><table><thead><tr><th>Name</th><th>SKU</th><th>Category</th><th>Buy Price</th><th>Sell Price</th><th>Stock</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(data||[]).map(r=>`<tr data-name="${escapeHtml(r.name)}" data-cat="${r.category||''}"><td>${escapeHtml(r.name)}</td><td>${r.sku||''}</td><td>${escapeHtml(r.category||'')}</td><td>${money(r.buy_price)}</td><td>${money(r.sell_price)}</td><td>${r.stock} ${r.stock<10?'<span class="badge badge-danger">Low!</span>':''}</td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status||'Active'}</span></td><td class="no-export"><button class="btn btn-sm btn-secondary edit-btn" data-id="${r.id}">Edit</button> <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const fields = [{name:'name',label:'Name',required:true},{name:'sku',label:'SKU'},{name:'category',label:'Category'},{name:'buy_price',label:'Buy Price',type:'number'},{name:'sell_price',label:'Sell Price',type:'number'},{name:'stock',label:'Stock',type:'number'},{name:'status',label:'Status',type:'select',options:[{value:'Active',label:'Active'},{value:'Inactive',label:'Inactive'}]}];
+            document.getElementById('addProdBtn').onclick = () => openModal('Add Product', fields, async (p) => { if(p.buy_price)p.buy_price=parseFloat(p.buy_price);if(p.sell_price)p.sell_price=parseFloat(p.sell_price);if(p.stock)p.stock=parseInt(p.stock); const {error}=await db.from('products').insert(p); if(error) toast(error.message,true); else {toast('Added');renderProducts();} closeModal(); });
+            c.querySelectorAll('.edit-btn').forEach(b => b.onclick = async () => { const r=(data||[]).find(x=>x.id===b.dataset.id); openModal('Edit Product', fields, async(p)=>{if(p.buy_price)p.buy_price=parseFloat(p.buy_price);if(p.sell_price)p.sell_price=parseFloat(p.sell_price);if(p.stock)p.stock=parseInt(p.stock);const{error}=await db.from('products').update(p).eq('id',b.dataset.id);if(error)toast(error.message,true);else{toast('Updated');renderProducts();}closeModal();}, r); });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('products', b.dataset.id, renderProducts, "Cannot delete: linked to stock adjustments."));
+            wireFilters(c);
+        }
+
+        async function renderStock() {
+            if(dbErr()) return; const c = content();
+            const { data: prods } = await db.from('products').select('*').order('name');
+            const { data: adjs } = await db.from('stock_adjustments').select('*, products(name), employees(name)').order('created_at', {ascending:false});
+            
+            const totStock = (prods||[]).reduce((s,p)=>s+p.stock,0);
+            const stockIn = (adjs||[]).filter(a=>a.type==='Stock In').reduce((s,a)=>s+a.adjustment,0);
+            const stockOut = (adjs||[]).filter(a=>['Stock Out','Damage'].includes(a.type)).reduce((s,a)=>s+a.adjustment,0);
+            const lowAlert = (prods||[]).filter(p=>p.stock<10).length;
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Stock Adjustments</h2><button class="btn btn-primary" id="addAdjBtn"><i class="fas fa-plus"></i> New Adjustment</button></div>
+            <div class="summary-strip"><div class="summary-item"><strong>Total Units:</strong>${totStock}</div><div class="summary-item"><strong>Stock In:</strong>${stockIn}</div><div class="summary-item"><strong>Stock Out:</strong>${stockOut}</div><div class="summary-item"><strong>Low Alerts:</strong>${lowAlert}</div></div>
+            <div class="card table-responsive"><table><thead><tr><th>Ref No</th><th>Product</th><th>Type</th><th>Qty Before</th><th>Adjustment</th><th>Qty After</th><th>Reason</th><th>Adjusted By</th><th>Date</th></tr></thead><tbody>
+            ${(adjs||[]).map(r=>`<tr><td>${r.ref_no||''}</td><td>${escapeHtml(r.products?.name)}</td><td><span class="badge ${statusBadgeClass(r.type)}">${r.type}</span></td><td>${r.qty_before}</td><td>${r.adjustment>0?'+':''}${r.adjustment}</td><td>${r.qty_after}</td><td>${escapeHtml(r.reason||'')}</td><td>${escapeHtml(r.employees?.name||'')}</td><td>${r.created_at?new Date(r.created_at).toLocaleDateString():''}</td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const prodOpts = (prods||[]).map(p=>({value:p.id, label:`${p.name} (Stock: ${p.stock})`}));
+            const fields = [{name:'product_id',label:'Product',type:'select',options:prodOpts,required:true},{name:'type',label:'Type',type:'select',options:[{value:'Stock In',label:'Stock In'},{value:'Stock Out',label:'Stock Out'},{value:'Damage',label:'Damage'},{value:'Return',label:'Return'}],required:true},{name:'adjustment',label:'Quantity (+/-)',type:'number',required:true},{name:'reason',label:'Reason',type:'textarea'}];
+            
+            document.getElementById('addAdjBtn').onclick = () => openModal('New Adjustment', fields, async (p) => {
+                const prod = (prods||[]).find(x=>x.id===p.product_id);
+                if(!prod) return toast('Product not found', true);
+                const adj = parseInt(p.adjustment);
+                const qtyBefore = prod.stock;
+                let qtyAfter = qtyBefore;
+                
+                if(p.type==='Stock In' || p.type==='Return') { qtyAfter = qtyBefore + adj; }
+                else { qtyAfter = qtyBefore - adj; }
+                
+                if(qtyAfter < 0) return toast('Insufficient stock! Result cannot be negative.', true);
+                
+                const ref = await nextCode('stock_adjustments', 'ref_no', 'ADJ-');
+                const payload = { ref_no: ref, product_id: p.product_id, type: p.type, qty_before: qtyBefore, adjustment: adj, qty_after: qtyAfter, reason: p.reason, adjusted_by: null };
+                
+                const { error: e1 } = await db.from('stock_adjustments').insert(payload);
+                if(e1) return toast(e1.message, true);
+                
+                const { error: e2 } = await db.from('products').update({stock: qtyAfter}).eq('id', p.product_id);
+                if(e2) return toast(e2.message, true);
+                
+                toast('Stock Updated'); closeModal(); renderStock();
+            });
+        }
+
+        async function renderCustomers() {
+            if(dbErr()) return; const c = content();
+            const { data: prods } = await db.from('products').select('id, name');
+            const { data: custs } = await db.from('customers').select('*').order('customer_name');
+            const { data: ords } = await db.from('sales_orders').select('customer_id');
+            const { data: invs } = await db.from('invoices').select('customer_id');
+            
+            const ordCount = {}; (ords||[]).forEach(o => ordCount[o.customer_id] = (ordCount[o.customer_id]||0)+1);
+            const invCount = {}; (invs||[]).forEach(i => invCount[i.customer_id] = (invCount[i.customer_id]||0)+1);
+            const prodOpts = (prods||[]).map(p=>({value:p.name, label:p.name}));
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Customers</h2><button class="btn btn-primary" id="addCustBtn"><i class="fas fa-plus"></i> Add Customer</button></div>
+            <div class="card table-responsive"><table><thead><tr><th>Name</th><th>Company</th><th>Email</th><th>Phone</th><th>Interest</th><th>Orders</th><th>Invoices</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(custs||[]).map(r=>`<tr data-name="${escapeHtml(r.customer_name)}" data-comp="${r.company||''}"><td>${escapeHtml(r.customer_name)}</td><td>${escapeHtml(r.company||'')}</td><td>${escapeHtml(r.email||'')}</td><td>${escapeHtml(r.phone||'')}</td><td>${escapeHtml(r.interested_product||'')}</td><td>${ordCount[r.id]||0}</td><td>${invCount[r.id]||0}</td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status||'Active'}</span></td><td class="no-export"><button class="btn btn-sm btn-secondary edit-btn" data-id="${r.id}">Edit</button> <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const fields = [{name:'customer_name',label:'Name',required:true},{name:'company',label:'Company'},{name:'email',label:'Email'},{name:'phone',label:'Phone'},{name:'interested_product',label:'Interested Product',type:'select',options:prodOpts},{name:'status',label:'Status',type:'select',options:[{value:'Active',label:'Active'},{value:'Inactive',label:'Inactive'}]}];
+            document.getElementById('addCustBtn').onclick = () => openModal('Add Customer', fields, async (p) => { const {error}=await db.from('customers').insert(p); if(error) toast(error.message,true); else {toast('Added');renderCustomers();} closeModal(); });
+            c.querySelectorAll('.edit-btn').forEach(b => b.onclick = async () => { const r=(custs||[]).find(x=>x.id===b.dataset.id); openModal('Edit Customer', fields, async(p)=>{const{error}=await db.from('customers').update(p).eq('id',b.dataset.id);if(error)toast(error.message,true);else{toast('Updated');renderCustomers();}closeModal();}, r); });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('customers', b.dataset.id, renderCustomers, "Cannot delete: Customer has linked Sales Orders or Invoices."));
+            wireFilters(c);
+        }
+
+        async function renderOrders() {
+            if(dbErr()) return; const c = content();
+            const { data: ords } = await db.from('sales_orders').select('*, customers(customer_name)').order('created_at', {ascending:false});
+            const { data: invs } = await db.from('invoices').select('sales_order_id');
+            const invSet = new Set((invs||[]).map(i=>i.sales_order_id));
+            const custOpts = await fetchOptions('customers', 'id', 'customer_name');
+            
+            const tot = (ords||[]).length; const comp = (ords||[]).filter(o=>o.status==='Completed').length; const pend = (ords||[]).filter(o=>o.status==='Pending').length; const canc = (ords||[]).filter(o=>o.status==='Cancelled').length;
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Sales Orders</h2><div><button class="btn btn-secondary" onclick="exportTableToCSV(document.getElementById('pageContent'),'orders.csv')"><i class="fas fa-file-csv"></i> CSV</button> <button class="btn btn-primary" id="addOrdBtn"><i class="fas fa-plus"></i> New Order</button></div></div>
+            <div class="summary-strip"><div class="summary-item"><strong>Total:</strong>${tot}</div><div class="summary-item"><strong>Completed:</strong>${comp}</div><div class="summary-item"><strong>Pending:</strong>${pend}</div><div class="summary-item"><strong>Cancelled:</strong>${canc}</div></div>
+            <div class="card table-responsive"><table><thead><tr><th>Order No</th><th>Customer</th><th>Items</th><th>Subtotal</th><th>Tax</th><th>Discount</th><th>Total</th><th>Payment</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(ords||[]).map(r=>`<tr data-ord="${r.order_no||''}" data-stat="${r.status||''}"><td>${r.order_no||''}</td><td>${escapeHtml(r.customers?.customer_name)}</td><td>${r.items_count||0}</td><td>${money(r.subtotal)}</td><td>${money(r.tax)}</td><td>${money(r.discount)}</td><td>${money(r.total)}</td><td><span class="badge ${statusBadgeClass(r.payment_status)}">${r.payment_status||'Unpaid'}</span></td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td><td class="no-export">${!invSet.has(r.id)?`<button class="btn btn-sm btn-success gen-inv-btn" data-id="${r.id}" data-tot="${r.total}" data-cust="${r.customer_id}">Gen Invoice</button>`:'Invoiced'} <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const fields = [{name:'customer_id',label:'Customer',type:'select',options:custOpts,required:true},{name:'items_count',label:'Items Count',type:'number'},{name:'subtotal',label:'Subtotal',type:'number',required:true},{name:'tax',label:'Tax',type:'number'},{name:'discount',label:'Discount',type:'number'},{name:'payment_status',label:'Payment',type:'select',options:[{value:'Unpaid',label:'Unpaid'},{value:'Partial',label:'Partial'},{value:'Paid',label:'Paid'}]},{name:'status',label:'Status',type:'select',options:[{value:'Pending',label:'Pending'},{value:'Completed',label:'Completed'},{value:'Cancelled',label:'Cancelled'}]}];
+            document.getElementById('addOrdBtn').onclick = () => openModal('New Order', fields, async (p) => {
+                p.order_no = await nextCode('sales_orders', 'order_no', 'SO-');
+                p.order_date = todayISO();
+                p.total = (parseFloat(p.subtotal)||0) + (parseFloat(p.tax)||0) - (parseFloat(p.discount)||0);
+                const {error}=await db.from('sales_orders').insert(p); if(error) toast(error.message,true); else {toast('Added');renderOrders();} closeModal();
+            });
+            c.querySelectorAll('.gen-inv-btn').forEach(b => b.onclick = async () => {
+                const invNo = await nextCode('invoices', 'invoice_no', 'INV-');
+                const d = new Date(); d.setDate(d.getDate()+30);
+                const payload = { invoice_no: invNo, customer_id: b.dataset.cust, sales_order_id: b.dataset.id, issue_date: todayISO(), due_date: d.toISOString().split('T')[0], amount: b.dataset.tot, tax: 0, total: b.dataset.tot, paid: 0, status: 'Pending' };
+                const {error}=await db.from('invoices').insert(payload); if(error) toast(error.message,true); else {toast('Invoice Generated');renderOrders();}
+            });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('sales_orders', b.dataset.id, renderOrders, "Cannot delete: linked to invoices."));
+            wireFilters(c);
+        }
+
+        async function renderInvoices() {
+            if(dbErr()) return; const c = content();
+            const { data: invs } = await db.from('invoices').select('*, customers(customer_name), sales_orders(order_no)').order('created_at', {ascending:false});
+            const totInv = (invs||[]).reduce((s,i)=>s+Number(i.total||0),0);
+            const totPaid = (invs||[]).reduce((s,i)=>s+Number(i.paid||0),0);
+            const pendBal = (invs||[]).filter(i=>i.status!=='Paid'&&i.status!=='Overdue').reduce((s,i)=>s+Number(i.balance||0),0);
+            const overdBal = (invs||[]).filter(i=>i.status==='Overdue').reduce((s,i)=>s+Number(i.balance||0),0);
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Invoices</h2><div><button class="btn btn-secondary" onclick="exportTableToCSV(document.getElementById('pageContent'),'invoices.csv')"><i class="fas fa-file-csv"></i> CSV</button></div></div>
+            <div class="summary-strip"><div class="summary-item"><strong>Total Invoiced:</strong>${money(totInv)}</div><div class="summary-item"><strong>Total Paid:</strong>${money(totPaid)}</div><div class="summary-item"><strong>Pending:</strong>${money(pendBal)}</div><div class="summary-item"><strong>Overdue:</strong>${money(overdBal)}</div></div>
+            <div class="card table-responsive"><table><thead><tr><th>Invoice No</th><th>Customer</th><th>Order</th><th>Issue Date</th><th>Due Date</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(invs||[]).map(r=>`<tr data-inv="${r.invoice_no||''}" data-stat="${r.status||''}"><td>${r.invoice_no||''}</td><td>${escapeHtml(r.customers?.customer_name)}</td><td>${r.sales_orders?.order_no||''}</td><td>${r.issue_date||''}</td><td>${r.due_date||''}</td><td>${money(r.total)}</td><td>${money(r.paid)}</td><td>${money(r.balance)}</td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td><td class="no-export">${r.status!=='Paid'?`<button class="btn btn-sm btn-success pay-btn" data-id="${r.id}" data-tot="${r.total}">Mark Paid</button>`:''}</td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            c.querySelectorAll('.pay-btn').forEach(b => b.onclick = async () => { const {error}=await db.from('invoices').update({paid:b.dataset.tot, status:'Paid'}).eq('id',b.dataset.id); if(error)toast(error.message,true);else{toast('Marked Paid');renderInvoices();} });
+            wireFilters(c);
+        }
+
+        async function renderExpenses() {
+            if(dbErr()) return; const c = content();
+            const { data: exps } = await db.from('expenses').select('*, employees(name)').order('date', {ascending:false});
+            const totExp = (exps||[]).reduce((s,e)=>s+Number(e.amount||0),0);
+            const appExp = (exps||[]).filter(e=>e.status==='Approved').reduce((s,e)=>s+Number(e.amount||0),0);
+            const pendExp = (exps||[]).filter(e=>e.status==='Pending Approval').length;
+            const cats = [...new Set((exps||[]).map(e=>e.category).filter(Boolean))];
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Expenses</h2><div><button class="btn btn-secondary" onclick="exportTableToCSV(document.getElementById('pageContent'),'expenses.csv')"><i class="fas fa-file-csv"></i> CSV</button> <button class="btn btn-primary" id="addExpBtn"><i class="fas fa-plus"></i> Add Expense</button></div></div>
+            <div class="summary-strip"><div class="summary-item"><strong>Total:</strong>${money(totExp)}</div><div class="summary-item"><strong>Approved:</strong>${money(appExp)}</div><div class="summary-item"><strong>Pending:</strong>${pendExp}</div><div class="summary-item"><strong>Categories:</strong>${cats.length}</div></div>
+            <div class="chart-grid"><div class="card"><canvas id="expLineChart"></canvas></div><div class="card"><canvas id="expDoughChart"></canvas></div></div>
+            <div class="card table-responsive" style="margin-top:24px"><table><thead><tr><th>Exp No</th><th>Date</th><th>Description</th><th>Category</th><th>Vendor</th><th>Amount</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(exps||[]).map(r=>`<tr data-cat="${r.category||''}" data-stat="${r.status||''}"><td>${r.exp_no||''}</td><td>${r.date||''}</td><td>${escapeHtml(r.description)}</td><td>${escapeHtml(r.category||'')}</td><td>${escapeHtml(r.vendor||'')}</td><td>${money(r.amount)}</td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td><td class="no-export">${r.status==='Pending Approval'?`<button class="btn btn-sm btn-success app-btn" data-id="${r.id}">Approve</button>`:''} <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const empOpts = await fetchOptions('employees', 'id', 'name');
+            const fields = [{name:'date',label:'Date',type:'date',required:true},{name:'description',label:'Description',required:true},{name:'category',label:'Category'},{name:'vendor',label:'Vendor'},{name:'amount',label:'Amount',type:'number',required:true},{name:'paid_by',label:'Paid By'},{name:'submitted_by',label:'Submitted By',type:'select',options:empOpts},{name:'status',label:'Status',type:'select',options:[{value:'Pending Approval',label:'Pending Approval'},{value:'Approved',label:'Approved'},{value:'Rejected',label:'Rejected'}]}];
+            document.getElementById('addExpBtn').onclick = () => openModal('Add Expense', fields, async (p) => {
+                p.exp_no = await nextCode('expenses', 'exp_no', 'EXP-'); if(p.amount)p.amount=parseFloat(p.amount);
+                const {error}=await db.from('expenses').insert(p); if(error) toast(error.message,true); else {toast('Added');renderExpenses();} closeModal();
+            });
+            c.querySelectorAll('.app-btn').forEach(b => b.onclick = async () => { const {error}=await db.from('expenses').update({status:'Approved'}).eq('id',b.dataset.id); if(error)toast(error.message,true);else{toast('Approved');renderExpenses();} });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('expenses', b.dataset.id, renderExpenses));
+
+            const months = lastNMonths(6);
+            const trend = months.map(m => (exps||[]).filter(e=>e.date&&e.date.startsWith(m)).reduce((s,e)=>s+Number(e.amount),0));
+            drawChart('expLineChart', 'line', months.map(monthLabel), [{label:'Expenses', data:trend, borderColor:'#ef4444', fill:false}], {plugins:{title:{display:true,text:'6-Month Trend'}}});
+
+            const catTotals = {};
+            (exps||[]).forEach(e => catTotals[e.category||'General'] = (catTotals[e.category||'General']||0)+Number(e.amount));
+            drawChart('expDoughChart', 'doughnut', Object.keys(catTotals), [{data:Object.values(catTotals), backgroundColor:['#2563eb','#10b981','#f97316','#8b5cf6','#ef4444','#14b8a6']}], {plugins:{legend:{position:'bottom'},title:{display:true,text:'By Category'}}});
+            
+            wireFilters(c);
+        }
+
+        async function renderLeads() {
+            if(dbErr()) return; const c = content();
+            const { data: leads } = await db.from('leads').select('*, employees(name)').order('created_at', {ascending:false});
+            const empOpts = await fetchOptions('employees', 'id', 'name');
+            const prodOpts = await fetchOptions('products', 'name', 'name');
+            const stages = ['New','Contacted','Qualified','Proposal','Negotiation','Closed Won'];
+            const stageCounts = {}; stages.forEach(s => stageCounts[s] = 0);
+            (leads||[]).forEach(l => { if(stageCounts[l.stage] !== undefined) stageCounts[l.stage]++; else stageCounts[l.stage]=1; });
+
+            const openVal = (leads||[]).filter(l=>!['Closed Won','Closed Lost'].includes(l.stage)).reduce((s,l)=>s+Number(l.deal_value||0),0);
+            const wonVal = (leads||[]).filter(l=>l.stage==='Closed Won').reduce((s,l)=>s+Number(l.deal_value||0),0);
+            const totVal = (leads||[]).reduce((s,l)=>s+Number(l.deal_value||0),0);
+            const conv = totVal > 0 ? ((wonVal/totVal)*100).toFixed(1) : 0;
+            const followups = (leads||[]).filter(l=>l.next_followup===todayISO()).length;
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Leads & CRM</h2><button class="btn btn-primary" id="addLeadBtn"><i class="fas fa-plus"></i> Add Lead</button></div>
+            <div class="pipeline-stepper">${stages.map((s,i)=>`<div class="step"><div class="step-circle" style="background:${i===stages.length-1?'#10b981':'#2563eb'}">${stageCounts[s]||0}</div><div class="step-title">${s}</div></div>`).join('')}</div>
+            <div class="summary-strip"><div class="summary-item"><strong>Total Leads:</strong>${(leads||[]).length}</div><div class="summary-item"><strong>Pipeline Value:</strong>${money(openVal)}</div><div class="summary-item"><strong>Conversion:</strong>${conv}%</div><div class="summary-item"><strong>Follow-ups Today:</strong>${followups}</div></div>
+            <div class="card table-responsive"><table><thead><tr><th>Name</th><th>Company</th><th>Product</th><th>Deal Value</th><th>Stage</th><th>Assigned To</th><th>Next Follow-up</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(leads||[]).map(r=>`<tr data-name="${escapeHtml(r.name)}" data-stage="${r.stage||''}"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.company||'')}</td><td>${escapeHtml(r.interested_product||'')}</td><td>${money(r.deal_value)}</td><td><span class="badge ${statusBadgeClass(r.stage)}">${r.stage}</span></td><td>${escapeHtml(r.employees?.name||'')}</td><td>${r.next_followup||''}</td><td class="no-export"><button class="btn btn-sm btn-secondary edit-btn" data-id="${r.id}">Edit</button> <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`).join('')}
+            </tbody></table></div>`;
+            
+            const fields = [{name:'name',label:'Name',required:true},{name:'company',label:'Company'},{name:'email',label:'Email'},{name:'phone',label:'Phone'},{name:'interested_product',label:'Product Interest',type:'select',options:prodOpts},{name:'source',label:'Source'},{name:'deal_value',label:'Deal Value',type:'number'},{name:'stage',label:'Stage',type:'select',options:stages.map(s=>({value:s,label:s}))},{name:'next_followup',label:'Next Follow-up',type:'date'},{name:'assigned_to',label:'Assigned To',type:'select',options:empOpts}];
+            document.getElementById('addLeadBtn').onclick = () => openModal('Add Lead', fields, async (p) => { if(p.deal_value)p.deal_value=parseFloat(p.deal_value); const {error}=await db.from('leads').insert(p); if(error) toast(error.message,true); else {toast('Added');renderLeads();} closeModal(); });
+            c.querySelectorAll('.edit-btn').forEach(b => b.onclick = async () => { const r=(leads||[]).find(x=>x.id===b.dataset.id); openModal('Edit Lead', fields, async(p)=>{if(p.deal_value)p.deal_value=parseFloat(p.deal_value);const{error}=await db.from('leads').update(p).eq('id',b.dataset.id);if(error)toast(error.message,true);else{toast('Updated');renderLeads();}closeModal();}, r); });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('leads', b.dataset.id, renderLeads));
+            wireFilters(c);
+        }
+
+        async function renderProjects() {
+            if(dbErr()) return; const c = content();
+            const { data: projs } = await db.from('projects').select('*, customers(customer_name)').order('deadline');
+            const custOpts = await fetchOptions('customers', 'id', 'customer_name');
+            
+            const tot=(projs||[]).length; const comp=(projs||[]).filter(p=>p.status==='Completed').length; const inP=(projs||[]).filter(p=>p.status==='In Progress').length; const onH=(projs||[]).filter(p=>p.status==='On Hold').length;
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Projects</h2><button class="btn btn-primary" id="addProjBtn"><i class="fas fa-plus"></i> Add Project</button></div>
+            <div class="summary-strip"><div class="summary-item"><strong>Total:</strong>${tot}</div><div class="summary-item"><strong>Completed:</strong>${comp}</div><div class="summary-item"><strong>In Progress:</strong>${inP}</div><div class="summary-item"><strong>On Hold:</strong>${onH}</div></div>
+            
+            <div class="kanban-board">
+                <div class="kanban-col"><div class="kanban-col-title">In Progress</div>
+                ${(projs||[]).filter(p=>p.status==='In Progress').map(p=>`<div class="kanban-card" style="border-left-color:#3b82f6"><h4>${escapeHtml(p.name)}</h4><p>${escapeHtml(p.customers?.customer_name||'')}</p><div class="progress-bar"><div class="progress-fill" style="width:${p.progress}%;background:#3b82f6"></div></div><div class="progress-info"><span>${p.progress}%</span><span>${p.deadline||''}</span></div></div>`).join('')}
+                </div>
+                <div class="kanban-col"><div class="kanban-col-title">Completed</div>
+                ${(projs||[]).filter(p=>p.status==='Completed').map(p=>`<div class="kanban-card" style="border-left-color:#10b981"><h4>${escapeHtml(p.name)}</h4><p>${escapeHtml(p.customers?.customer_name||'')}</p><div class="progress-bar"><div class="progress-fill" style="width:100%;background:#10b981"></div></div><div class="progress-info"><span>100%</span><span>${p.deadline||''}</span></div></div>`).join('')}
+                </div>
+                <div class="kanban-col"><div class="kanban-col-title">On Hold</div>
+                ${(projs||[]).filter(p=>p.status==='On Hold').map(p=>`<div class="kanban-card" style="border-left-color:#f59e0b"><h4>${escapeHtml(p.name)}</h4><p>${escapeHtml(p.customers?.customer_name||'')}</p><div class="progress-bar"><div class="progress-fill" style="width:${p.progress}%;background:#f59e0b"></div></div><div class="progress-info"><span>${p.progress}%</span><span>${p.deadline||''}</span></div></div>`).join('')}
+                </div>
+            </div>
+
+            <div class="card table-responsive"><table><thead><tr><th>Name</th><th>Client</th><th>Deadline</th><th>Budget</th><th>Spent</th><th>Progress</th><th>Priority</th><th>Status</th><th class="no-export">Actions</th></tr></thead><tbody>
+            ${(projs||[]).map(r=>{const pri=r.progress>75?'Low':r.progress>25?'Medium':'High';const priClass=r.progress>75?'success':r.progress>25?'warning':'danger'; return `<tr data-name="${escapeHtml(r.name)}" data-stat="${r.status||''}"><td>${escapeHtml(r.name)}</td><td>${escapeHtml(r.customers?.customer_name||'')}</td><td>${r.deadline||''}</td><td>${money(r.budget)}</td><td>${money(r.spent)}</td><td><div class="progress-bar" style="width:100px"><div class="progress-fill" style="width:${r.progress}%;background:${r.progress>75?'#10b981':r.progress>25?'#f59e0b':'#ef4444'}"></div></div></td><td><span class="badge badge-${priClass}">${pri}</span></td><td><span class="badge ${statusBadgeClass(r.status)}">${r.status}</span></td><td class="no-export"><button class="btn btn-sm btn-secondary edit-btn" data-id="${r.id}">Edit</button> <button class="btn btn-sm btn-danger del-btn" data-id="${r.id}">Del</button></td></tr>`;}).join('')}
+            </tbody></table></div>`;
+            
+            const fields = [{name:'name',label:'Name',required:true},{name:'client_id',label:'Client',type:'select',options:custOpts},{name:'start_date',label:'Start Date',type:'date'},{name:'deadline',label:'Deadline',type:'date'},{name:'budget',label:'Budget',type:'number'},{name:'team_size',label:'Team Size',type:'number'},{name:'progress',label:'Progress %',type:'number'},{name:'spent',label:'Spent',type:'number'},{name:'status',label:'Status',type:'select',options:[{value:'In Progress',label:'In Progress'},{value:'Completed',label:'Completed'},{value:'On Hold',label:'On Hold'}]}];
+            document.getElementById('addProjBtn').onclick = () => openModal('Add Project', fields, async (p) => { if(p.budget)p.budget=parseFloat(p.budget);if(p.spent)p.spent=parseFloat(p.spent);if(p.progress)p.progress=parseInt(p.progress);if(p.team_size)p.team_size=parseInt(p.team_size); const {error}=await db.from('projects').insert(p); if(error) toast(error.message,true); else {toast('Added');renderProjects();} closeModal(); });
+            c.querySelectorAll('.edit-btn').forEach(b => b.onclick = async () => { const r=(projs||[]).find(x=>x.id===b.dataset.id); openModal('Edit Project', fields, async(p)=>{if(p.budget)p.budget=parseFloat(p.budget);if(p.spent)p.spent=parseFloat(p.spent);if(p.progress)p.progress=parseInt(p.progress);if(p.team_size)p.team_size=parseInt(p.team_size);const{error}=await db.from('projects').update(p).eq('id',b.dataset.id);if(error)toast(error.message,true);else{toast('Updated');renderProjects();}closeModal();}, r); });
+            c.querySelectorAll('.del-btn').forEach(b => b.onclick = () => confirmDelete('projects', b.dataset.id, renderProjects, "Cannot delete project."));
+            wireFilters(c);
+        }
+
+        async function renderReports() {
+            if(dbErr()) return; const c = content();
+            const [inv, exp, ord, lead, proj, emp, prod] = await Promise.all([
+                db.from('invoices').select('total, paid, status, issue_date'),
+                db.from('expenses').select('amount, status, date'),
+                db.from('sales_orders').select('status'),
+                db.from('leads').select('stage'),
+                db.from('projects').select('status'),
+                db.from('employees').select('status'),
+                db.from('products').select('stock, status')
+            ]);
+
+            const rev = (inv.data||[]).filter(i=>i.status==='Paid').reduce((s,i)=>s+Number(i.total),0);
+            const totExp = (exp.data||[]).reduce((s,e)=>s+Number(e.amount),0);
+            const net = rev - totExp;
+            const margin = rev > 0 ? ((net/rev)*100).toFixed(1) : 0;
+
+            const months = lastNMonths(6);
+            const revData = months.map(m => (inv.data||[]).filter(i=>i.status==='Paid'&&i.issue_date&&i.issue_date.startsWith(m)).reduce((s,i)=>s+Number(i.total),0));
+            const expData = months.map(m => (exp.data||[]).filter(e=>e.date&&e.date.startsWith(m)).reduce((s,e)=>s+Number(e.amount),0));
+            const netData = months.map((m,i) => revData[i] - expData[i]);
+
+            const calcPerf = (arr, doneVal) => {
+                const tot = (arr||[]).length; const done = (arr||[]).filter(x=>x.status===doneVal).length; return tot > 0 ? ((done/tot)*100).toFixed(0) : 0;
+            };
+
+            c.innerHTML = `<div class="page-header"><h2 class="page-title">Financial Report</h2><button class="btn btn-secondary no-print" onclick="window.print()"><i class="fas fa-print"></i> Print</button></div>
+            <div class="stat-cards">
+                <div class="stat-card grad-blue"><div><h3>${money(rev)}</h3><p>Total Revenue</p></div><i class="fas fa-arrow-trend-up"></i></div>
+                <div class="stat-card grad-red"><div><h3>${money(totExp)}</h3><p>Total Expenses</p></div><i class="fas fa-arrow-trend-down"></i></div>
+                <div class="stat-card grad-green"><div><h3>${money(net)}</h3><p>Net Profit (${margin}%)</p></div><i class="fas fa-sack-dollar"></i></div>
+            </div>
+            <div class="chart-grid">
+                <div class="card"><h3 style="margin-bottom:16px">Revenue vs Expenses</h3><canvas id="repBarChart"></canvas></div>
+                <div class="card"><h3 style="margin-bottom:16px">Net Profit Trend</h3><canvas id="repLineChart"></canvas></div>
+            </div>
+            <div class="card" style="margin-top:24px">
+                <h3 style="margin-bottom:16px">Module Performance Overview</h3>
+                <div style="display:grid;gap:16px">
+                    ${[
+                        {name:'Sales Orders', val: calcPerf(ord.data, 'Completed')}, 
+                        {name:'Invoices', val: calcPerf(inv.data, 'Paid')}, 
+                        {name:'Leads', val: calcPerf(lead.data, 'Closed Won')}, 
+                        {name:'Projects', val: calcPerf(proj.data, 'Completed')}, 
+                        {name:'Employees', val: calcPerf(emp.data, 'Active')}, 
+                        {name:'Inventory', val: calcPerf(prod.data, 'Active')}
+                    ].map(m => `
+                        <div><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:14px;font-weight:500">${m.name}</span><span style="font-size:14px;color:#6b7280">${m.val}%</span></div><div class="progress-bar" style="height:10px"><div class="progress-fill" style="width:${m.val}%;background:${Number(m.val)>70?'#10b981':Number(m.val)>40?'#f59e0b':'#ef4444'}"></div></div></div>
+                    `).join('')}
+                </div>
+            </div>`;
+
+            drawChart('repBarChart', 'bar', months.map(monthLabel), [
+                {label:'Revenue', data:revData, backgroundColor:'#2563eb'}, {label:'Expenses', data:expData, backgroundColor:'#ef4444'}
+            ]);
+            drawChart('repLineChart', 'line', months.map(monthLabel), [{label:'Net Profit', data:netData, borderColor:'#10b981', fill:false}]);
+        }
+
+        window.onload = checkAuth;
+    </script>
+</body>
+</html>
